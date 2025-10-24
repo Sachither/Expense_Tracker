@@ -23,13 +23,13 @@ auth_router = APIRouter()
 # Include authentication routes
 auth_router.include_router(
     fastapi_users.get_register_router(UserRead, UserCreate),
-    prefix="/auth",
+    prefix="",  # Prefix is added in main router
     tags=["auth"],
 )
 
 auth_router.include_router(
     fastapi_users.get_auth_router(auth_jwt),
-    prefix="/auth/jwt",
+    prefix="/jwt",  # This becomes /auth/jwt when mounted in main router
     tags=["auth"],
 )
 
