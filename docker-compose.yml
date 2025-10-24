@@ -1,0 +1,70 @@
+services:
+  api: &main_app
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: Expense_Tracker:${EXPENSE_TRACKER_VERSION:-latest}
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      EXPENSE_TRACKER_HOST: 0.0.0.0
+      EXPENSE_TRACKER_DB_HOST: Expense_Tracker-db
+      EXPENSE_TRACKER_DB_PORT: 5432
+      EXPENSE_TRACKER_DB_USER: Expense_Tracker
+      EXPENSE_TRACKER_DB_PASS: Expense_Tracker
+      EXPENSE_TRACKER_DB_BASE: Expense_Tracker
+      EXPENSE_TRACKER_REDIS_HOST: Expense_Tracker-redis
+
+  db:
+    image: postgres:16.3-bullseye
+    hostname: Expense_Tracker-db
+    environment:
+      POSTGRES_PASSWORD: "Expense_Tracker"
+      POSTGRES_USER: "Expense_Tracker"
+      POSTGRES_DB: "Expense_Tracker"
+    volumes:
+      - Expense_Tracker-db-data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: pg_isready -U Expense_Tracker
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  migrator:
+    image: Expense_Tracker:${EXPENSE_TRACKER_VERSION:-latest}
+    restart: "no"
+    command: alembic upgrade head
+    environment:
+      EXPENSE_TRACKER_DB_HOST: Expense_Tracker-db
+      EXPENSE_TRACKER_DB_PORT: 5432
+      EXPENSE_TRACKER_DB_USER: Expense_Tracker
+      EXPENSE_TRACKER_DB_PASS: Expense_Tracker
+      EXPENSE_TRACKER_DB_BASE: Expense_Tracker
+    depends_on:
+      db:
+        condition: service_healthy
+
+  redis:
+    image: bitnami/redis:6.2.5
+    hostname: "Expense_Tracker-redis"
+    restart: always
+    environment:
+      ALLOW_EMPTY_PASSWORD: "yes"
+    healthcheck:
+      test: redis-cli ping
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+
+
+volumes:
+  Expense_Tracker-db-data:
+    name: Expense_Tracker-db-data
