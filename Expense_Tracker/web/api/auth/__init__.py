@@ -1,3 +1,3 @@
-from .router import router as auth_router
+from .router import auth_router, current_user, fastapi_users
 
-__all__ = ["auth_router"]
+__all__ = ["auth_router", "current_user", "fastapi_users"]

@@ -10,7 +10,6 @@ from starlette.status import HTTP_400_BAD_REQUEST
 
 from Expense_Tracker.db.models.base_models import UserBase
 from Expense_Tracker.settings import settings
-from Expense_Tracker.web.api.auth.logging import log_auth_event
 
 
 class User(UserBase):
@@ -43,10 +42,30 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 detail="Password must be at least 8 characters long",
             )
 
-        if not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+        if not re.search(r"[A-Z]", password):
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
-                detail="Password must contain both letters and numbers",
+                detail="Password must contain at least one uppercase letter",
+            )
+
+        if not re.search(r"[a-z]", password):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Password must contain at least one lowercase letter",
+            )
+
+        if not re.search(r"\d", password):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Password must contain at least one number",
+            )
+
+        special_chars = '!@#$%^&*(),.?":{}|<>'
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Password must contain at least one special character "
+                f"({special_chars})",
             )
 
     async def on_after_login(
@@ -62,6 +81,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             request: The request object
             response: The response object from FastAPI-Users
         """
+        from Expense_Tracker.web.api.auth.logging import log_auth_event
+
         ip = request.client.host if request and request.client else None
         log_auth_event(
             event_type="login",
@@ -83,6 +104,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             token: The reset token
             request: The request object
         """
+        from Expense_Tracker.web.api.auth.logging import log_auth_event
+
         ip = request.client.host if request and request.client else None
         log_auth_event(
             event_type="password_reset_request",
@@ -102,6 +125,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             user: New user.
             request: Request client.
         """
+        from Expense_Tracker.web.api.auth.logging import log_auth_event
+
         ip = request.client.host if request and request.client else None
         log_auth_event(
             event_type="register",

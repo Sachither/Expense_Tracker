@@ -1,30 +1,39 @@
-from typing import TYPE_CHECKING
+"""Authentication router configuration."""
+
+from uuid import UUID
 
 from fastapi import APIRouter
 from fastapi_users import FastAPIUsers
 
+from Expense_Tracker.db.models.users import User
+from Expense_Tracker.web.api.auth.schemas import UserCreate, UserRead
+
 from .dependencies import get_user_manager
 from .jwt import auth_jwt
-from .schemas import UserCreate, UserRead
 
-if TYPE_CHECKING:
-    from Expense_Tracker.db.models.users import User
-
-router = APIRouter()
-
-fastapi_users = FastAPIUsers[User, UserCreate](
-    get_user_manager,
-    [auth_jwt],
+# Initialize FastAPIUsers instance with proper typing
+fastapi_users = FastAPIUsers[User, UUID](
+    get_user_manager,  # type: ignore
+    [auth_jwt],  # type: ignore
 )
 
-router.include_router(
+# Initialize authentication router
+auth_router = APIRouter()
+
+# Include authentication routes
+auth_router.include_router(
     fastapi_users.get_register_router(UserRead, UserCreate),
     prefix="/auth",
     tags=["auth"],
 )
 
-router.include_router(
+auth_router.include_router(
     fastapi_users.get_auth_router(auth_jwt),
     prefix="/auth/jwt",
     tags=["auth"],
 )
+
+# Export the instance for use in other routes that need authentication
+current_user = fastapi_users.current_user
+
+__all__ = ["auth_router", "fastapi_users", "current_user"]

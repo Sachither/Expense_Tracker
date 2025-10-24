@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from Expense_Tracker.db.dependencies import get_db_session
 from Expense_Tracker.db.models.categories import ExpenseCategory
+from Expense_Tracker.web.api.auth import current_user
 from Expense_Tracker.web.api.auth.schemas import UserRead
-from Expense_Tracker.web.api.users.views import fastapi_users
 
 from .schema import CategoryCreate, CategoryRead, CategoryUpdate
 
@@ -22,9 +22,9 @@ router = APIRouter()
 async def list_categories(
     skip: int = 0,
     limit: int = 100,
-    current_user: UserRead = Depends(fastapi_users.current_user(active=True)),
+    current_user: UserRead = Depends(current_user(active=True)),
     db: AsyncSession = Depends(get_db_session),
-) -> List[ExpenseCategory]:
+) -> list[ExpenseCategory]:
     """List all categories for the current user with pagination.
 
     Args:
@@ -50,7 +50,7 @@ async def list_categories(
 @router.post("/", response_model=CategoryRead, status_code=status.HTTP_201_CREATED)
 async def create_category(
     category: CategoryCreate,
-    current_user: UserRead = Depends(fastapi_users.current_user(active=True)),
+    current_user: UserRead = Depends(current_user(active=True)),
     db: AsyncSession = Depends(get_db_session),
 ) -> ExpenseCategory:
     """Create a new category.
@@ -71,6 +71,12 @@ async def create_category(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Category name cannot be empty",
+        )
+
+    if len(category.name.strip()) > 50:  # reasonable limit for a category name
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Category name cannot be longer than 50 characters",
         )
 
     # Check for existing category with same name for this user
@@ -111,7 +117,7 @@ async def create_category(
 @router.get("/{category_id}", response_model=CategoryRead)
 async def get_category(
     category_id: UUID,
-    current_user: UserRead = Depends(fastapi_users.current_user(active=True)),
+    current_user: UserRead = Depends(current_user(active=True)),
     db: AsyncSession = Depends(get_db_session),
 ) -> ExpenseCategory:
     """Get a specific category.
@@ -147,7 +153,7 @@ async def get_category(
 async def update_category(
     category_id: UUID,
     category_update: CategoryUpdate,
-    current_user: UserRead = Depends(fastapi_users.current_user(active=True)),
+    current_user: UserRead = Depends(current_user(active=True)),
     db: AsyncSession = Depends(get_db_session),
 ) -> CategoryRead:
     """Update a category.
@@ -178,8 +184,40 @@ async def update_category(
             detail="Category not found",
         )
 
-    # Update only provided fields
+    # Validate and update fields
     update_data = category_update.model_dump(exclude_unset=True)
+
+    if "name" in update_data:
+        name = update_data["name"].strip()
+        if not name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Category name cannot be empty",
+            )
+        if len(name) > 50:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Category name cannot be longer than 50 characters",
+            )
+
+        # Check for duplicate name
+        existing = await db.execute(
+            select(ExpenseCategory).where(
+                and_(
+                    ExpenseCategory.name == name,
+                    ExpenseCategory.user_id == current_user.id,
+                    ExpenseCategory.id != category_id,
+                ),
+            ),
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A category with this name already exists",
+            )
+        update_data["name"] = name
+
+    # Update fields
     for key, value in update_data.items():
         setattr(category, key, value)
 
@@ -191,7 +229,7 @@ async def update_category(
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
     category_id: UUID,
-    current_user: UserRead = Depends(fastapi_users.current_user(active=True)),
+    current_user: UserRead = Depends(current_user(active=True)),
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a category.

@@ -41,6 +41,11 @@ class Settings(BaseSettings):
 
     log_level: LogLevel = LogLevel.INFO
     users_secret: str = os.getenv("USERS_SECRET", "")
+    # JWT Settings
+    jwt_token_lifetime: int = 1800  # 30 minutes in seconds
+    jwt_refresh_token_lifetime: int = 604800  # 7 days in seconds
+    jwt_algorithm: str = "HS256"
+
     # Variables for the database
     db_host: str = "localhost"
     db_port: int = 5432
