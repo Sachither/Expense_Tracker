@@ -12,13 +12,29 @@ from Expense_Tracker.db.dependencies import get_db_session
 from Expense_Tracker.db.models.categories import ExpenseCategory
 from Expense_Tracker.web.api.auth import current_user
 from Expense_Tracker.web.api.auth.schemas import UserRead
+from Expense_Tracker.web.middleware.ratelimiter.limiter import RateLimiter
+from Expense_Tracker.web.middleware.ratelimiter.middleware import RateLimitConfig
 
 from .schema import CategoryCreate, CategoryRead, CategoryUpdate
 
 router = APIRouter()
 
+# Configure rate limits for category endpoints
+# Lower limits than expenses since categories are accessed less frequently
+category_rate_limit = RateLimiter(
+    RateLimitConfig(
+        requests_limit=30,  # 30 requests per minute for unauthenticated users
+        auth_requests_limit=100,  # 100 requests per minute for authenticated users
+        window_size=60,  # 1 minute window
+    ),
+)
 
-@router.get("/", response_model=List[CategoryRead])
+
+@router.get(
+    "/",
+    response_model=List[CategoryRead],
+    dependencies=[Depends(category_rate_limit.is_allowed)],
+)
 async def list_categories(
     skip: int = 0,
     limit: int = 100,
@@ -47,7 +63,12 @@ async def list_categories(
     return list(result.scalars().all())
 
 
-@router.post("/", response_model=CategoryRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=CategoryRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(category_rate_limit.is_allowed)],
+)
 async def create_category(
     category: CategoryCreate,
     current_user: UserRead = Depends(current_user(active=True)),
@@ -114,7 +135,11 @@ async def create_category(
         ) from None
 
 
-@router.get("/{category_id}", response_model=CategoryRead)
+@router.get(
+    "/{category_id}",
+    response_model=CategoryRead,
+    dependencies=[Depends(category_rate_limit.is_allowed)],
+)
 async def get_category(
     category_id: UUID,
     current_user: UserRead = Depends(current_user(active=True)),
@@ -149,7 +174,11 @@ async def get_category(
     return category
 
 
-@router.patch("/{category_id}", response_model=CategoryRead)
+@router.patch(
+    "/{category_id}",
+    response_model=CategoryRead,
+    dependencies=[Depends(category_rate_limit.is_allowed)],
+)
 async def update_category(
     category_id: UUID,
     category_update: CategoryUpdate,
@@ -226,7 +255,11 @@ async def update_category(
     return CategoryRead.model_validate(category)
 
 
-@router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{category_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(category_rate_limit.is_allowed)],
+)
 async def delete_category(
     category_id: UUID,
     current_user: UserRead = Depends(current_user(active=True)),

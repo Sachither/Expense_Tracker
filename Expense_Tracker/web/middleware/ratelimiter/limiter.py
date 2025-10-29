@@ -29,28 +29,11 @@ class RateLimitExceeded(HTTPException):
 class RateLimitConfig:
     """Configuration for rate limiting."""
 
-    def __init__(
-        self,
-        requests_limit: int = 100,
-        window_size: int = 60,
-        key_func: Optional[Callable[[Request], str]] = None,
-    ) -> None:
-        """Initialize rate limit configuration.
-
-        Args:
-            requests_limit: Maximum number of requests allowed within window
-            window_size: Time window in seconds
-            key_func: Optional function to generate cache key from request
-        """
-        self.requests_limit = requests_limit
-        self.window_size = window_size
-        self.key_func = key_func or self._default_key_func
-
     @staticmethod
-    def _default_key_func(request: Request) -> str:
+    async def get_cache_key(request: Request) -> str:
         """Default function to generate cache key from request.
 
-        Uses client's IP address as the key.
+        Uses user ID if available, falls back to IP address.
 
         Args:
             request: FastAPI request object
@@ -58,10 +41,51 @@ class RateLimitConfig:
         Returns:
             str: Cache key for rate limiting
         """
+        # Try to get user ID first
+        user_id = await RateLimitConfig.get_user(request)
+        if user_id:
+            return f"user:{user_id}"
+
+        # Fall back to IP address
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request.client.host if request.client else "unknown"
+            ip = forwarded.split(",")[0].strip()
+        else:
+            ip = request.client.host if request.client else "unknown"
+
+        endpoint = request.url.path
+        return f"ip:{ip}:path:{endpoint}"
+
+    @staticmethod
+    async def get_user(request: Request) -> Optional[str]:
+        """Try to get current user from request state."""
+        try:
+            user = request.state.user
+            return str(user.id) if user else None
+        except AttributeError:
+            return None
+
+    def __init__(
+        self,
+        requests_limit: int = 100,
+        window_size: int = 60,
+        auth_requests_limit: Optional[int] = None,
+        key_func: Optional[Callable[[Request], str]] = None,
+    ) -> None:
+        """Initialize rate limit configuration.
+
+        Args:
+            requests_limit: Max requests per window for anonymous users
+            window_size: Time window in seconds
+            auth_requests_limit: Optional different limit for authenticated users
+            key_func: Optional function to generate cache key from request
+        """
+        self.requests_limit = requests_limit
+        self.window_size = window_size
+        self.auth_requests_limit = (
+            auth_requests_limit or requests_limit * 2
+        )  # Double limit for auth users
+        self.key_func = key_func or self.get_cache_key
 
 
 class RateLimiter:
@@ -99,23 +123,38 @@ class RateLimiter:
         Raises:
             RateLimitExceeded: If rate limit is exceeded
         """
-        key = self.config.key_func(request)
-        now = datetime.now()
+        key = await self.config.get_cache_key(request)
+        is_authenticated = await self.config.get_user(request) is not None
+        limit = (
+            self.config.auth_requests_limit
+            if is_authenticated
+            else self.config.requests_limit
+        )
 
+        now = datetime.now()
         self._clean_old_requests()
 
         if key in self._cache:
             timestamp, count = self._cache[key]
-            if (now - timestamp).total_seconds() < self.config.window_size:
-                if count >= self.config.requests_limit:
-                    retry_after = int(
-                        self.config.window_size - (now - timestamp).total_seconds(),
-                    )
-                    raise RateLimitExceeded(retry_after=retry_after)
-                self._cache[key] = (timestamp, count + 1)
-            else:
+            time_passed = (now - timestamp).total_seconds()
+
+            if time_passed >= self.config.window_size:
+                # Window expired, reset counter
                 self._cache[key] = (now, 1)
+            else:
+                # Update counter
+                if count >= limit:
+                    retry_after = int(self.config.window_size - time_passed)
+                    raise RateLimitExceeded(
+                        detail=(
+                            f"Rate limit exceeded. "
+                            f"Try again in {retry_after} seconds"
+                        ),
+                        retry_after=retry_after,
+                    )
+                self._cache[key] = (timestamp, count + 1)
         else:
+            # First request for this key
             self._cache[key] = (now, 1)
 
         return True

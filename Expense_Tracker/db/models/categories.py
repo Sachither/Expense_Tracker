@@ -1,5 +1,5 @@
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -9,6 +9,7 @@ from Expense_Tracker.db.base import Base
 
 if TYPE_CHECKING:
     from Expense_Tracker.db.models.base_models import UserBase
+    from Expense_Tracker.db.models.expenses import Expense
 
 
 class ExpenseCategory(Base):
@@ -25,7 +26,7 @@ class ExpenseCategory(Base):
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("user.id"),
+        ForeignKey("user.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -33,6 +34,11 @@ class ExpenseCategory(Base):
     user: Mapped["UserBase"] = relationship(
         "Expense_Tracker.db.models.base_models.UserBase",
         back_populates="categories",
+    )
+    expenses: Mapped[List["Expense"]] = relationship(
+        "Expense_Tracker.db.models.expenses.Expense",
+        back_populates="category",
+        cascade="all, delete-orphan",
     )
 
     @classmethod

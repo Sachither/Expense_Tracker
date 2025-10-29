@@ -10,6 +10,7 @@ from Expense_Tracker.db.base import Base
 
 if TYPE_CHECKING:
     from Expense_Tracker.db.models.categories import ExpenseCategory
+    from Expense_Tracker.db.models.expenses import Expense
 
 
 class UserBase(SQLAlchemyBaseUserTableUUID, Base):
@@ -18,9 +19,15 @@ class UserBase(SQLAlchemyBaseUserTableUUID, Base):
     first_name: Mapped[str | None] = mapped_column(String, nullable=True)
     last_name: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    # Define relationship using string reference
+    # Define relationships using string references
     categories: Mapped[List["ExpenseCategory"]] = relationship(
         "Expense_Tracker.db.models.categories.ExpenseCategory",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    expenses: Mapped[List["Expense"]] = relationship(
+        "Expense_Tracker.db.models.expenses.Expense",
         back_populates="user",
         cascade="all, delete-orphan",
     )
