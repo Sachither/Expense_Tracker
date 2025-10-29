@@ -25,6 +25,8 @@ from Expense_Tracker.settings import settings
 from Expense_Tracker.web.api.auth.schemas import UserCreate
 from Expense_Tracker.web.application import get_app
 
+# Import fixtures to make them available to all tests
+
 
 @pytest.fixture(scope="session")
 def anyio_backend() -> str:
